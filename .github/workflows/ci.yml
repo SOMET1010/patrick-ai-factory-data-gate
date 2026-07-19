@@ -93,9 +93,16 @@ jobs:
           datagate verify ci-contracts -o artifacts/data-gate-directory.json
           echo "Directory verify exit code: $?"
 
+      - name: Diff two contracts (compatibility report)
+        run: |
+          # A generated contract diffed against itself has no breaking changes.
+          datagate diff ci-contracts/generated.yaml ci-contracts/generated.yaml \
+            --format json -o artifacts/data-gate-diff.json
+          echo "Diff exit code: $?"
+
       - name: Upload verification reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: data-gate-result
-          path: artifacts/data-gate-*.json
+          path: artifacts/*.json

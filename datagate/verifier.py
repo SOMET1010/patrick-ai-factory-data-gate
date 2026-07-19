@@ -12,9 +12,10 @@ import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from datagate.checks import Check
-from datagate.contract import Contract
+from datagate.contract import Contract, load_contract
 from datagate.db import connect
 from datagate.engine import run_checks
 from datagate.exceptions import ContractError, DataGateError
@@ -177,3 +178,23 @@ def generate_contract(
         len(schema.tables),
     )
     return database, dump_contract(mapping)
+
+
+def schema_to_mapping(*, dsn: str | None = None, schema_name: str = "public") -> dict:
+    """Introspect a live schema and return it as a contract mapping."""
+    with connect(dsn) as connection:
+        introspector = Introspector(connection)
+        database = introspector.current_database()
+        schema = introspector.introspect(schema_name)
+    return contract_from_schema(schema, database)
+
+
+def resolve_mapping(source: str, *, schema_name: str = "public") -> dict[str, Any]:
+    """Resolve a diff source to a contract mapping.
+
+    ``source`` is a path to a YAML contract if it exists on disk, otherwise it is
+    treated as a PostgreSQL DSN and introspected live (read-only).
+    """
+    if Path(source).is_file():
+        return load_contract(source)
+    return schema_to_mapping(dsn=source, schema_name=schema_name)
