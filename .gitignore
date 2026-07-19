@@ -30,3 +30,7 @@ artifacts/*.json
 # Build output
 build/
 dist/
+
+# Operational notes (never commit to a public repo)
+OPERATIONS.md
+CLAUDE.local.md
