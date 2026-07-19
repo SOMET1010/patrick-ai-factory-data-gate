@@ -17,14 +17,16 @@ from tests.helpers import FakeConnection
 
 def test_build_columns_groups_by_table() -> None:
     rows = [
-        ("users", "id", "integer", "NO", None, 1),
-        ("users", "email", "text", "YES", None, 2),
-        ("orgs", "id", "integer", "NO", None, 1),
+        ("users", "id", "integer", "NO", None, 1, None, 32, 0),
+        ("users", "email", "character varying", "YES", None, 2, 255, None, None),
+        ("orgs", "id", "integer", "NO", None, 1, None, 32, 0),
     ]
     columns = build_columns(rows)
     assert [c.name for c in columns["users"]] == ["id", "email"]
     assert columns["users"][0].is_nullable is False
+    assert columns["users"][0].numeric_precision == 32
     assert columns["users"][1].is_nullable is True
+    assert columns["users"][1].char_max_length == 255
     assert columns["orgs"][0].name == "id"
 
 
@@ -64,8 +66,8 @@ def test_introspector_builds_schema_with_views() -> None:
                 ("active_users", "VIEW"),
             ],
             "columns": [
-                ("users", "id", "integer", "NO", None, 1),
-                ("active_users", "id", "integer", "YES", None, 1),
+                ("users", "id", "integer", "NO", None, 1, None, 32, 0),
+                ("active_users", "id", "integer", "YES", None, 1, None, 32, 0),
             ],
             "primary_keys": [("users", "id")],
             "foreign_keys": [],

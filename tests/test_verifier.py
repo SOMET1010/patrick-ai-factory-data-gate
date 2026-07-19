@@ -35,7 +35,7 @@ audit: []
 
 FAKE_ROWS = {
     "tables": [("users", "BASE TABLE")],
-    "columns": [("users", "id", "integer", "NO", None, 1)],
+    "columns": [("users", "id", "integer", "NO", None, 1, None, 32, 0)],
     "primary_keys": [("users", "id")],
     "foreign_keys": [],
     "indexes": [],

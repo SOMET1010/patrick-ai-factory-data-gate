@@ -20,6 +20,9 @@ class Column:
     is_nullable: bool
     default: str | None = None
     ordinal: int = 0
+    char_max_length: int | None = None
+    numeric_precision: int | None = None
+    numeric_scale: int | None = None
 
 
 @dataclass(frozen=True)

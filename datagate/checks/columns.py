@@ -1,9 +1,9 @@
-"""Columns check: verify column presence, data type and nullability."""
+"""Columns check: verify presence, type, nullability, precision and default."""
 
 from __future__ import annotations
 
-from datagate.contract import Contract
-from datagate.models import Schema
+from datagate.contract import ColumnSpec, Contract
+from datagate.models import Column, Schema
 from datagate.report import Finding, Severity
 
 # Common aliases so a contract can use a friendly type name and still match the
@@ -32,6 +32,22 @@ def _normalise_type(value: str) -> str:
     return _TYPE_ALIASES.get(key, key)
 
 
+def _normalise_default(value: str | None) -> str | None:
+    """Best-effort normalisation of a column default for comparison.
+
+    Strips PostgreSQL type casts (``::text``) and surrounding quotes so that a
+    contract can declare ``active`` and match a stored ``'active'::text``.
+    """
+    if value is None:
+        return None
+    text = value.strip()
+    if "::" in text:
+        text = text.split("::", 1)[0].strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in "'\"":
+        text = text[1:-1]
+    return text.lower()
+
+
 class ColumnsCheck:
     """Compare each contracted column against the live column definition."""
 
@@ -47,53 +63,79 @@ class ColumnsCheck:
                 continue
 
             for column_spec in table_spec.columns:
-                target = f"column:{table_spec.name}.{column_spec.name}"
                 column = table.column(column_spec.name)
                 if column is None:
                     findings.append(
-                        Finding(
-                            check=self.name,
-                            severity=Severity.ERROR,
-                            target=target,
-                            message=(
-                                f"Expected column '{column_spec.name}' is missing "
-                                f"from table '{table_spec.name}'."
-                            ),
+                        self._finding(
+                            table_spec.name,
+                            column_spec.name,
+                            f"Expected column '{column_spec.name}' is missing "
+                            f"from table '{table_spec.name}'.",
                         )
                     )
                     continue
-
-                if column_spec.type is not None:
-                    expected = _normalise_type(column_spec.type)
-                    actual = _normalise_type(column.data_type)
-                    if expected != actual:
-                        findings.append(
-                            Finding(
-                                check=self.name,
-                                severity=Severity.ERROR,
-                                target=target,
-                                message=(
-                                    f"Column '{table_spec.name}.{column_spec.name}' "
-                                    f"has type '{column.data_type}', expected "
-                                    f"'{column_spec.type}'."
-                                ),
-                            )
-                        )
-
-                if (
-                    column_spec.nullable is not None
-                    and column_spec.nullable != column.is_nullable
-                ):
-                    findings.append(
-                        Finding(
-                            check=self.name,
-                            severity=Severity.ERROR,
-                            target=target,
-                            message=(
-                                f"Column '{table_spec.name}.{column_spec.name}' "
-                                f"nullability is {column.is_nullable}, expected "
-                                f"{column_spec.nullable}."
-                            ),
-                        )
-                    )
+                findings.extend(self._compare(table_spec.name, column_spec, column))
         return findings
+
+    def _compare(self, table: str, spec: ColumnSpec, column: Column) -> list[Finding]:
+        findings: list[Finding] = []
+        qualified = f"{table}.{spec.name}"
+
+        if spec.type is not None and _normalise_type(spec.type) != _normalise_type(
+            column.data_type
+        ):
+            findings.append(
+                self._finding(
+                    table,
+                    spec.name,
+                    f"Column '{qualified}' has type '{column.data_type}', "
+                    f"expected '{spec.type}'.",
+                )
+            )
+
+        if spec.nullable is not None and spec.nullable != column.is_nullable:
+            findings.append(
+                self._finding(
+                    table,
+                    spec.name,
+                    f"Column '{qualified}' nullability is {column.is_nullable}, "
+                    f"expected {spec.nullable}.",
+                )
+            )
+
+        for label, expected, actual in (
+            ("max length", spec.max_length, column.char_max_length),
+            ("precision", spec.precision, column.numeric_precision),
+            ("scale", spec.scale, column.numeric_scale),
+        ):
+            if expected is not None and expected != actual:
+                findings.append(
+                    self._finding(
+                        table,
+                        spec.name,
+                        f"Column '{qualified}' {label} is {actual}, "
+                        f"expected {expected}.",
+                    )
+                )
+
+        if spec.default is not None and _normalise_default(
+            spec.default
+        ) != _normalise_default(column.default):
+            findings.append(
+                self._finding(
+                    table,
+                    spec.name,
+                    f"Column '{qualified}' default is {column.default!r}, "
+                    f"expected {spec.default!r}.",
+                )
+            )
+
+        return findings
+
+    def _finding(self, table: str, column: str, message: str) -> Finding:
+        return Finding(
+            check=self.name,
+            severity=Severity.ERROR,
+            target=f"column:{table}.{column}",
+            message=message,
+        )

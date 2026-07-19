@@ -48,7 +48,16 @@ ORDER BY table_name
 
 SQL_COLUMNS = """
 -- datagate:columns
-SELECT table_name, column_name, data_type, is_nullable, column_default, ordinal_position
+SELECT
+    table_name,
+    column_name,
+    data_type,
+    is_nullable,
+    column_default,
+    ordinal_position,
+    character_maximum_length,
+    numeric_precision,
+    numeric_scale
 FROM information_schema.columns
 WHERE table_schema = %s
 ORDER BY table_name, ordinal_position
@@ -125,10 +134,25 @@ def _to_bool(value: Any) -> bool:
 # --- Row mappers (pure) -------------------------------------------------------
 
 
+def _to_int(value: Any) -> int | None:
+    return None if value is None else int(value)
+
+
 def build_columns(rows: Iterable[Sequence[Any]]) -> dict[str, list[Column]]:
     """Map ``information_schema.columns`` rows to columns keyed by table."""
     columns: dict[str, list[Column]] = defaultdict(list)
-    for table_name, name, data_type, is_nullable, default, ordinal in rows:
+    for row in rows:
+        (
+            table_name,
+            name,
+            data_type,
+            is_nullable,
+            default,
+            ordinal,
+            char_max_length,
+            numeric_precision,
+            numeric_scale,
+        ) = row
         columns[table_name].append(
             Column(
                 name=name,
@@ -136,6 +160,9 @@ def build_columns(rows: Iterable[Sequence[Any]]) -> dict[str, list[Column]]:
                 is_nullable=_to_bool(is_nullable),
                 default=default,
                 ordinal=int(ordinal) if ordinal is not None else 0,
+                char_max_length=_to_int(char_max_length),
+                numeric_precision=_to_int(numeric_precision),
+                numeric_scale=_to_int(numeric_scale),
             )
         )
     return columns
