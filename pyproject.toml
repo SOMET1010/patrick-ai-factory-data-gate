@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "patrick-ai-factory-data-gate"
+version = "0.1.0"
+description = "Read-only PostgreSQL schema verifier"
+readme = "README.md"
+requires-python = ">=3.12"
+
+dependencies = [
+    "psycopg[binary]>=3.3",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0",
+]
+
+[project.scripts]
+datagate = "datagate.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.setuptools.packages.find]
+include = ["datagate*"]
+exclude = ["artifacts*", "contracts*", "tests*"]

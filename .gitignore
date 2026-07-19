@@ -18,3 +18,4 @@ artifacts/*.json
 
 # Keep the directory
 !artifacts/.gitkeep
+*.egg-info/
