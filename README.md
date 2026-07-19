@@ -201,6 +201,59 @@ the code or the repository**.
 Provide it via a local `.env` (see [`.env.example`](.env.example)), system
 environment variables, or CI secrets (e.g. GitHub Actions Secrets).
 
+## Deployment — using the gate as a component
+
+The Data Gate ships three ready-to-use integration surfaces so it can be dropped
+into any Patrick AI Factory stack (e.g. **Hermes Review**) without copying code.
+
+### 1. CLI (pip / pipx)
+
+```bash
+pipx install "git+https://github.com/SOMET1010/patrick-ai-factory-data-gate"
+DATAGATE_DSN="postgresql://datagate_ro:***@host:5432/db" \
+  datagate contracts/your-contract.yaml
+```
+
+### 2. Docker
+
+A small, non-root image is defined in [`Dockerfile`](Dockerfile):
+
+```bash
+docker build -t patrick-datagate .
+
+# Mount the repo (contracts + artifacts) and pass the DSN via the environment.
+docker run --rm \
+  -e DATAGATE_DSN="postgresql://datagate_ro:***@db-host:5432/your_db" \
+  -v "$PWD:/work" \
+  patrick-datagate contracts/your-contract.yaml -o artifacts/data-gate-result.json
+```
+
+The container's exit code is the gate's exit code (`0/1/2`), so it works as a
+pipeline step as-is.
+
+### 3. Reusable GitHub Action
+
+The repository exposes a composite action ([`action.yml`](action.yml)). Any
+workflow can gate a deployment on schema conformance in one step:
+
+```yaml
+- name: Data Gate
+  uses: SOMET1010/patrick-ai-factory-data-gate@main
+  with:
+    contract: contracts/hermes-review.yaml
+    dsn: ${{ secrets.DATAGATE_DSN }}   # a read-only role
+```
+
+The step fails the job on `FAIL`/`ERROR`, and the JSON report path is exposed as
+the `report` output for later steps (e.g. artifact upload).
+
+### On the server
+
+On the platform host the tool lives at
+`/opt/patrick-ai-factory/patrick-ai-factory-data-gate`. Install it once
+(`pip install -e .` inside a venv) or run the Docker image; the DSN of the
+read-only role is supplied through the environment / secrets, never committed.
+
 ## Development
 
 ```bash
@@ -242,5 +295,7 @@ The Data Gate is a standalone component of the Patrick AI Factory platform.
 - [x] Warning-level (non-blocking) findings & severity policy (`settings`)
 - [x] Detection of unexpected/extra objects (drift)
 - [x] Column type precision (length, precision/scale) and default-value checks
+- [x] Deployable component: Docker image + reusable GitHub Action
 - [ ] Multi-schema contracts
 - [ ] Per-check severity overrides (e.g. treat a missing index as a warning)
+- [ ] Publish the Docker image to a registry (GHCR)

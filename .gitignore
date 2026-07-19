@@ -26,3 +26,7 @@ artifacts/*.json
 # Keep the directory
 !artifacts/.gitkeep
 *.egg-info/
+
+# Build output
+build/
+dist/
