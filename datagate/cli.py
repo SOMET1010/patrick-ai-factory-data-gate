@@ -25,6 +25,8 @@ from pathlib import Path
 
 from datagate import __version__
 from datagate.differ import diff_contracts
+from datagate.docsgen import render_html as render_docs_html
+from datagate.docsgen import render_markdown as render_docs_markdown
 from datagate.exceptions import DataGateError
 from datagate.report import DEFAULT_REPORT_PATH, AggregateReport, Report, Status
 from datagate.reporting import render_html, render_markdown
@@ -36,7 +38,7 @@ from datagate.verifier import (
     validate_contract,
 )
 
-SUBCOMMANDS = ("verify", "generate", "diff", "report")
+SUBCOMMANDS = ("verify", "generate", "diff", "report", "docs")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -136,6 +138,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output path (default: artifacts/report.<ext>).",
     )
     report.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable verbose (DEBUG) logging."
+    )
+
+    # -- docs -------------------------------------------------------------------
+    docs = subparsers.add_parser(
+        "docs", help="Generate schema documentation (Markdown/HTML + ER diagram)."
+    )
+    docs.add_argument("source", help="A contract file path or a DSN.")
+    docs.add_argument(
+        "--schema", default="public", help="Schema to introspect for a DSN source."
+    )
+    docs.add_argument(
+        "--format", choices=("md", "html"), default="md", help="Output format."
+    )
+    docs.add_argument(
+        "-o", "--output", default=None, help="Output path (default: docs/schema.<ext>)."
+    )
+    docs.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose (DEBUG) logging."
     )
 
@@ -289,6 +309,32 @@ def _cmd_report(args: argparse.Namespace) -> int:
     return Status.PASS.exit_code
 
 
+def _cmd_docs(args: argparse.Namespace) -> int:
+    try:
+        mapping = resolve_mapping(args.source, schema_name=args.schema)
+    except DataGateError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return Status.ERROR.exit_code
+
+    if args.format == "html":
+        rendered = render_docs_html(mapping)
+        default_out = Path("docs") / "schema.html"
+    else:
+        rendered = render_docs_markdown(mapping)
+        default_out = Path("docs") / "schema.md"
+
+    output = Path(args.output) if args.output else default_out
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(rendered, encoding="utf-8")
+    except OSError as exc:  # pragma: no cover - filesystem edge case
+        print(f"ERROR: could not write docs to {output}: {exc}", file=sys.stderr)
+        return Status.ERROR.exit_code
+
+    print(f"[OK] documentation written to {output}")
+    return Status.PASS.exit_code
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(_normalise_argv(argv))
@@ -305,6 +351,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _cmd_diff(args)
     if args.command == "report":
         return _cmd_report(args)
+    if args.command == "docs":
+        return _cmd_docs(args)
     return _cmd_verify(args)
 
 

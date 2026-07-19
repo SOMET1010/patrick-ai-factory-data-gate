@@ -107,6 +107,13 @@ jobs:
           datagate report artifacts/data-gate-directory.json \
             --format md -o artifacts/report.md
 
+      - name: Generate schema documentation
+        run: |
+          datagate docs ci-contracts/generated.yaml \
+            --format md -o artifacts/schema.md
+          datagate docs ci-contracts/generated.yaml \
+            --format html -o artifacts/schema.html
+
       - name: Upload verification reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -115,3 +122,4 @@ jobs:
           path: |
             artifacts/*.json
             artifacts/report.*
+            artifacts/schema.*
