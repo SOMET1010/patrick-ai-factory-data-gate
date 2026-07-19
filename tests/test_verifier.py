@@ -129,3 +129,21 @@ def test_generate_contract(monkeypatch) -> None:
     assert database == "mydb"
     assert "table: users" in yaml_text
     assert "database: mydb" in yaml_text
+
+
+def test_find_contracts_recursive(tmp_path) -> None:
+    (tmp_path / "a.yaml").write_text("x", encoding="utf-8")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "b.yml").write_text("x", encoding="utf-8")
+    (tmp_path / "note.txt").write_text("x", encoding="utf-8")
+    found = [p.name for p in verifier.find_contracts(tmp_path)]
+    assert found == ["a.yaml", "b.yml"]
+
+
+def test_run_directory_contract_only(tmp_path) -> None:
+    (tmp_path / "ok.yaml").write_text(PASS_CONTRACT, encoding="utf-8")
+    (tmp_path / "bad.yaml").write_text("version: 1\n", encoding="utf-8")
+    results = verifier.run_directory(tmp_path, contract_only=True)
+    by_name = {p.split("/")[-1]: r for p, r in results}
+    assert by_name["ok.yaml"].status is Status.PASS
+    assert by_name["bad.yaml"].status is Status.ERROR

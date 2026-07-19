@@ -106,3 +106,41 @@ def test_cli_legacy_form_routes_to_verify(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(cli, "run", fake_run)
     assert cli.main(["legacy.yaml", "-o", str(output)]) == 0
     assert called["contract"] == "legacy.yaml"
+
+
+def test_cli_verify_directory(tmp_path, monkeypatch) -> None:
+    from datagate.report import build_report as _build
+
+    output = tmp_path / "agg.json"
+    results = [
+        ("contracts/a.yaml", _build(database="d", schema="s", findings=[])),
+        (
+            "contracts/b.yaml",
+            _build(
+                database="d",
+                schema="s",
+                findings=[
+                    Finding(
+                        check="structure",
+                        severity=Severity.ERROR,
+                        target="table:x",
+                        message="missing",
+                    )
+                ],
+            ),
+        ),
+    ]
+    monkeypatch.setattr(cli, "run_directory", lambda *a, **k: results)
+    # target must be a real directory so is_dir() is True
+    code = cli.main(["verify", str(tmp_path), "-o", str(output)])
+    assert code == 1  # one contract failed -> aggregate FAIL
+    import json
+
+    data = json.loads(output.read_text(encoding="utf-8"))
+    assert data["summary"]["contracts"] == 2
+    assert data["summary"]["failed"] == 1
+
+
+def test_cli_verify_empty_directory(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(cli, "run_directory", lambda *a, **k: [])
+    assert cli.main(["verify", str(tmp_path)]) == 2

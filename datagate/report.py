@@ -157,3 +157,67 @@ def status_from_findings(findings: Iterable[Finding]) -> Status:
         if finding.severity is Severity.ERROR:
             return Status.FAIL
     return Status.PASS
+
+
+@dataclass(frozen=True)
+class AggregateReport:
+    """Result of verifying several contracts (e.g. a whole directory)."""
+
+    results: tuple[tuple[str, Report], ...] = ()
+    generated_at: str | None = None
+
+    @property
+    def status(self) -> Status:
+        """Worst status across all contracts (ERROR > FAIL > PASS)."""
+        statuses = {report.status for _, report in self.results}
+        if Status.ERROR in statuses:
+            return Status.ERROR
+        if Status.FAIL in statuses:
+            return Status.FAIL
+        return Status.PASS
+
+    @property
+    def exit_code(self) -> int:
+        return self.status.exit_code
+
+    @property
+    def passed(self) -> int:
+        return sum(1 for _, r in self.results if r.status is Status.PASS)
+
+    @property
+    def failed(self) -> int:
+        return sum(1 for _, r in self.results if r.status is Status.FAIL)
+
+    @property
+    def errored(self) -> int:
+        return sum(1 for _, r in self.results if r.status is Status.ERROR)
+
+    def to_dict(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "status": self.status.value,
+            "summary": {
+                "contracts": len(self.results),
+                "passed": self.passed,
+                "failed": self.failed,
+                "errored": self.errored,
+                "errors": sum(r.error_count for _, r in self.results),
+                "warnings": sum(r.warning_count for _, r in self.results),
+            },
+            "reports": [
+                {"contract": contract, **report.to_dict()}
+                for contract, report in self.results
+            ],
+        }
+        if self.generated_at is not None:
+            payload["generated_at"] = self.generated_at
+        return payload
+
+    def to_json(self, *, indent: int = 2) -> str:
+        return json.dumps(self.to_dict(), indent=indent, sort_keys=False)
+
+    def write(self, path: str | Path = DEFAULT_REPORT_PATH) -> Path:
+        output = Path(path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(self.to_json() + "\n", encoding="utf-8")
+        logger.info("Aggregate report written to %s", output)
+        return output

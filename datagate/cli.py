@@ -24,8 +24,8 @@ from pathlib import Path
 
 from datagate import __version__
 from datagate.exceptions import DataGateError
-from datagate.report import DEFAULT_REPORT_PATH, Report, Status
-from datagate.verifier import generate_contract, run, validate_contract
+from datagate.report import DEFAULT_REPORT_PATH, AggregateReport, Report, Status
+from datagate.verifier import generate_contract, run, run_directory, validate_contract
 
 SUBCOMMANDS = ("verify", "generate")
 
@@ -42,7 +42,10 @@ def build_parser() -> argparse.ArgumentParser:
     verify = subparsers.add_parser(
         "verify", help="Verify a live schema against a YAML contract."
     )
-    verify.add_argument("contract", help="Path to the YAML contract.")
+    verify.add_argument(
+        "contract",
+        help="Path to a YAML contract, or a directory of contracts (*.yaml/*.yml).",
+    )
     verify.add_argument(
         "--dsn",
         default=None,
@@ -118,6 +121,9 @@ def _print_summary(report: Report) -> None:
 
 
 def _cmd_verify(args: argparse.Namespace) -> int:
+    if Path(args.contract).is_dir():
+        return _verify_directory(args)
+
     if args.contract_only:
         report = validate_contract(args.contract)
     else:
@@ -131,6 +137,34 @@ def _cmd_verify(args: argparse.Namespace) -> int:
 
     _print_summary(report)
     return report.exit_code
+
+
+def _verify_directory(args: argparse.Namespace) -> int:
+    results = run_directory(args.contract, dsn=args.dsn, contract_only=args.contract_only)
+    if not results:
+        print(f"ERROR: no contracts (*.yaml/*.yml) found in {args.contract}")
+        return Status.ERROR.exit_code
+
+    aggregate = AggregateReport(results=tuple(results))
+    try:
+        aggregate.write(args.output)
+    except OSError as exc:  # pragma: no cover - filesystem edge case
+        print(f"ERROR: could not write report to {args.output}: {exc}", file=sys.stderr)
+        return Status.ERROR.exit_code
+
+    for contract, report in results:
+        location = f"{report.database}/{report.schema}"
+        print(f"[{report.status.value.upper()}] {contract} ({location})")
+        for finding in report.findings:
+            print(f"    [{finding.severity.value}] {finding.target}: {finding.message}")
+        if report.error:
+            print(f"    error: {report.error}")
+    print(
+        f"== {aggregate.status.value.upper()}: {len(results)} contract(s) — "
+        f"{aggregate.passed} passed, {aggregate.failed} failed, "
+        f"{aggregate.errored} errored =="
+    )
+    return aggregate.exit_code
 
 
 def _cmd_generate(args: argparse.Namespace) -> int:

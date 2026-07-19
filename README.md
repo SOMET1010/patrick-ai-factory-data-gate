@@ -107,9 +107,20 @@ datagate verify contracts/your_db.yaml
 | --- | --- |
 | `datagate generate` | Introspect a live schema and write a draft YAML contract |
 | `datagate verify <contract>` | Verify a live schema against a contract (writes the JSON report) |
+| `datagate verify <directory>` | Verify **every** `*.yaml`/`*.yml` contract under a directory (recursively) and write one aggregate report |
 
 > Backward compatible: `datagate <contract>` (no subcommand) is treated as
 > `datagate verify <contract>`.
+
+**Verifying many contracts at once** — point `verify` at a directory:
+
+```bash
+datagate verify contracts/ -o artifacts/data-gate-result.json
+```
+
+Every contract is checked independently; the aggregate JSON report lists each
+result plus a global summary, and the exit code is the worst outcome
+(`0` all pass, `1` at least one FAIL, `2` at least one ERROR).
 
 **`verify`** options:
 
@@ -262,7 +273,15 @@ docker run --rm \
 ```
 
 The container's exit code is the gate's exit code (`0/1/2`), so it works as a
-pipeline step as-is.
+pipeline step as-is. To verify **all** contracts in one run, point it at the
+mounted directory:
+
+```bash
+docker run --rm \
+  -e DATAGATE_DSN="postgresql://datagate_ro:***@db-host:5432/your_db" \
+  -v "$PWD:/work" \
+  patrick-datagate verify contracts -o artifacts/data-gate-result.json
+```
 
 ### 3. Reusable GitHub Action
 
@@ -336,6 +355,7 @@ The Data Gate is a standalone component of the Patrick AI Factory platform.
 - [x] Column type precision (length, precision/scale) and default-value checks
 - [x] Deployable component: Docker image + reusable GitHub Action
 - [x] `datagate generate` — draft a contract from a live schema
+- [x] `datagate verify <directory>` — verify many contracts at once
 - [ ] `datagate diff` — compare two schemas or two contracts
 - [ ] `datagate docs` — generate schema documentation (Markdown/HTML)
 - [ ] `datagate report` — render the JSON report as Markdown/HTML

@@ -71,3 +71,47 @@ def test_report_write(tmp_path) -> None:
     assert written == output
     data = json.loads(output.read_text(encoding="utf-8"))
     assert data["status"] == "pass"
+
+
+def test_aggregate_status_precedence() -> None:
+    from datagate.report import AggregateReport
+
+    def rep(status):
+        findings = [_finding(Severity.ERROR)] if status is Status.FAIL else []
+        r = build_report(database="d", schema="s", findings=findings)
+        return (
+            r
+            if status is not Status.ERROR
+            else error_report(database="d", schema="s", message="boom")
+        )
+
+    all_pass = AggregateReport(results=(("a", rep(Status.PASS)),))
+    assert all_pass.status is Status.PASS and all_pass.exit_code == 0
+
+    with_fail = AggregateReport(
+        results=(("a", rep(Status.PASS)), ("b", rep(Status.FAIL)))
+    )
+    assert with_fail.status is Status.FAIL and with_fail.exit_code == 1
+
+    with_error = AggregateReport(
+        results=(("b", rep(Status.FAIL)), ("c", rep(Status.ERROR)))
+    )
+    assert with_error.status is Status.ERROR and with_error.exit_code == 2
+
+
+def test_aggregate_to_dict_counts() -> None:
+    from datagate.report import AggregateReport
+
+    passed = build_report(database="d", schema="s", findings=[])
+    failed = build_report(database="d", schema="s", findings=[_finding(Severity.ERROR)])
+    agg = AggregateReport(results=(("a", passed), ("b", failed)))
+    payload = agg.to_dict()
+    assert payload["summary"] == {
+        "contracts": 2,
+        "passed": 1,
+        "failed": 1,
+        "errored": 0,
+        "errors": 1,
+        "warnings": 0,
+    }
+    assert payload["reports"][0]["contract"] == "a"

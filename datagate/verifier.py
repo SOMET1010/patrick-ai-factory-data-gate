@@ -87,6 +87,39 @@ def run(
     return report
 
 
+def find_contracts(directory: str | Path) -> list[Path]:
+    """Return the ``*.yaml`` / ``*.yml`` files under ``directory``, sorted.
+
+    Recurses into subdirectories. The order is deterministic so reports are
+    stable across runs.
+    """
+    root = Path(directory)
+    files = {p for p in root.rglob("*.yaml")} | {p for p in root.rglob("*.yml")}
+    return sorted(f for f in files if f.is_file())
+
+
+def run_directory(
+    directory: str | Path,
+    *,
+    dsn: str | None = None,
+    checks: Sequence[Check] | None = None,
+    contract_only: bool = False,
+) -> list[tuple[str, Report]]:
+    """Verify every contract found under ``directory``.
+
+    Returns a list of ``(contract_path, report)`` in deterministic order. Each
+    contract is independent: an ERROR on one does not stop the others.
+    """
+    results: list[tuple[str, Report]] = []
+    for contract_path in find_contracts(directory):
+        if contract_only:
+            report = validate_contract(contract_path)
+        else:
+            report = run(contract_path, dsn=dsn, checks=checks)
+        results.append((str(contract_path), report))
+    return results
+
+
 def validate_contract(contract_path: str | Path) -> Report:
     """Validate a contract file without touching any database.
 
