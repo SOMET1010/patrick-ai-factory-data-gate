@@ -19,7 +19,7 @@ from collections.abc import Sequence
 
 from datagate import __version__
 from datagate.report import DEFAULT_REPORT_PATH, Report, Status
-from datagate.verifier import run
+from datagate.verifier import run, validate_contract
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -41,6 +41,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--output",
         default=str(DEFAULT_REPORT_PATH),
         help=f"Path to the JSON report (default: {DEFAULT_REPORT_PATH}).",
+    )
+    parser.add_argument(
+        "--contract-only",
+        action="store_true",
+        help="Validate the contract only, without connecting to a database.",
     )
     parser.add_argument(
         "-v",
@@ -78,7 +83,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     _configure_logging(args.verbose)
 
-    report = run(args.contract, dsn=args.dsn)
+    if args.contract_only:
+        report = validate_contract(args.contract)
+    else:
+        report = run(args.contract, dsn=args.dsn)
 
     try:
         report.write(args.output)

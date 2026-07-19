@@ -84,3 +84,36 @@ def run(
         report.warning_count,
     )
     return report
+
+
+def validate_contract(contract_path: str | Path) -> Report:
+    """Validate a contract file without touching any database.
+
+    Useful as a fast CI lint (exit ``0`` when the contract is well-formed,
+    ``2`` when it is malformed) before a database is available.
+    """
+    generated_at = _timestamp()
+    try:
+        contract = Contract.from_file(contract_path)
+    except ContractError as exc:
+        logger.error("Contract error: %s", exc)
+        return error_report(
+            database="unknown",
+            schema="unknown",
+            message=str(exc),
+            generated_at=generated_at,
+        )
+
+    logger.info("Contract '%s' is valid (contract-only mode)", contract_path)
+    return build_report(
+        database=contract.database,
+        schema=contract.schema,
+        findings=[],
+        generated_at=generated_at,
+        metadata={
+            "mode": "contract-only",
+            "contract_version": contract.version,
+            "tables_declared": len(contract.structure),
+            "audit_rules": len(contract.audit),
+        },
+    )

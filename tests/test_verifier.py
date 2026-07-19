@@ -94,3 +94,20 @@ def test_verifier_connection_error(tmp_path, monkeypatch) -> None:
     assert report.status is Status.ERROR
     assert report.exit_code == 2
     assert "cannot connect" in (report.error or "")
+
+
+def test_validate_contract_valid(tmp_path) -> None:
+    contract = tmp_path / "c.yaml"
+    contract.write_text(PASS_CONTRACT, encoding="utf-8")
+    report = verifier.validate_contract(contract)
+    assert report.status is Status.PASS
+    assert report.exit_code == 0
+    assert report.metadata["mode"] == "contract-only"
+
+
+def test_validate_contract_invalid(tmp_path) -> None:
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("version: 1\n", encoding="utf-8")  # missing required keys
+    report = verifier.validate_contract(bad)
+    assert report.status is Status.ERROR
+    assert report.exit_code == 2

@@ -54,3 +54,21 @@ def test_cli_forwards_dsn(tmp_path, monkeypatch) -> None:
 
     assert captured["contract"] == "my-contract.yaml"
     assert captured["dsn"] == "postgres://x"
+
+
+def test_cli_contract_only(tmp_path, monkeypatch) -> None:
+    output = tmp_path / "result.json"
+    captured = {}
+
+    def fake_validate(path):
+        captured["path"] = path
+        return build_report(database="db", schema="public", findings=[])
+
+    # --contract-only must call validate_contract, never run()
+    monkeypatch.setattr(cli, "validate_contract", fake_validate)
+    monkeypatch.setattr(
+        cli, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("run called"))
+    )
+    code = cli.main(["c.yaml", "--contract-only", "-o", str(output)])
+    assert code == 0
+    assert captured["path"] == "c.yaml"

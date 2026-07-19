@@ -98,8 +98,15 @@ Options:
 | --- | --- |
 | `--dsn` | PostgreSQL DSN (defaults to `DATAGATE_DSN`) |
 | `-o`, `--output` | Report path (default `artifacts/data-gate-result.json`) |
+| `--contract-only` | Validate the contract only, without connecting to a database |
 | `-v`, `--verbose` | Verbose (DEBUG) logging |
 | `--version` | Print version |
+
+Validate a contract without a database (fast CI lint, exit `0`/`2`):
+
+```bash
+datagate contracts/hermes-review.yaml --contract-only
+```
 
 ## Contract format
 
