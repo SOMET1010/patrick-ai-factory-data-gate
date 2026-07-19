@@ -72,18 +72,30 @@ jobs:
         run: |
           psql -h localhost -U postgres -d datagate_ci -v ON_ERROR_STOP=1 -f .github/sql/ci-schema.sql
 
-      - name: Run Data Gate (read-only user)
+      - name: Verify a single contract (read-only user)
         env:
           # Read-only role created by the seed script. This is an ephemeral CI
           # database; no production credentials are ever used here.
           DATAGATE_DSN: "postgresql://datagate_ro:datagate_ro@localhost:5432/datagate_ci"
         run: |
-          datagate contracts/example-users.yaml -o artifacts/data-gate-result.json
+          datagate verify contracts/example-users.yaml -o artifacts/data-gate-result.json
           echo "Exit code: $?"
 
-      - name: Upload verification report
+      - name: Generate a contract, then verify a directory of contracts
+        env:
+          DATAGATE_DSN: "postgresql://datagate_ro:datagate_ro@localhost:5432/datagate_ci"
+        run: |
+          mkdir -p ci-contracts
+          cp contracts/example-users.yaml ci-contracts/
+          # generate must produce a contract that verifies clean (round-trip)
+          datagate generate --schema public -o ci-contracts/generated.yaml
+          # verify the whole directory at once (multi-contract)
+          datagate verify ci-contracts -o artifacts/data-gate-directory.json
+          echo "Directory verify exit code: $?"
+
+      - name: Upload verification reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: data-gate-result
-          path: artifacts/data-gate-result.json
+          path: artifacts/data-gate-*.json
