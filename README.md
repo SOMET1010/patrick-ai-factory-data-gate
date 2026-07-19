@@ -110,6 +110,7 @@ datagate verify contracts/your_db.yaml
 | `datagate verify <directory>` | Verify **every** `*.yaml`/`*.yml` contract under a directory (recursively) and write one aggregate report |
 | `datagate diff <source> <target>` | Compare two schema sources (contract files or DSNs) and classify the changes |
 | `datagate report [report.json]` | Render a verify report as HTML or Markdown with a conformance score |
+| `datagate docs <source>` | Generate schema documentation (Markdown/HTML + Mermaid ER diagram) |
 
 > Backward compatible: `datagate <contract>` (no subcommand) is treated as
 > `datagate verify <contract>`.
@@ -170,6 +171,19 @@ The score is `100` for PASS, `0` for ERROR, and `max(0, 100 - 10*errors -
 2*warnings)` for FAIL (mean across contracts for an aggregate report). The HTML
 is dependency-free (inlined CSS) so it renders anywhere and is safe to attach as
 a CI artifact.
+
+### Schema documentation (`docs`)
+
+Generate browsable documentation of a schema — tables, columns, types, keys,
+indexes and a **Mermaid ER diagram** — from a contract file or a live database:
+
+```bash
+datagate docs contracts/hermes.yaml --format md  -o docs/schema.md
+datagate docs "$DATAGATE_DSN"        --format html -o docs/schema.html
+```
+
+The Markdown output embeds a ```` ```mermaid ```` ER diagram that renders on
+GitHub/GitLab; the HTML is self-contained.
 
 **`verify`** options:
 
@@ -407,7 +421,7 @@ The Data Gate is a standalone component of the Patrick AI Factory platform.
 - [x] `datagate verify <directory>` — verify many contracts at once
 - [x] `datagate diff` — compare two schemas or contracts, classify SAFE/WARNING/BREAKING
 - [x] `datagate report` — render a verify report as HTML/Markdown with a conformance score
-- [ ] `datagate docs` — generate schema documentation (Markdown/HTML, ER diagram)
+- [x] `datagate docs` — generate schema documentation (Markdown/HTML + Mermaid ER diagram)
 - [ ] Multi-schema contracts
 - [ ] Per-check severity overrides (e.g. treat a missing index as a warning)
 - [ ] Publish the Docker image to a registry (GHCR)

@@ -237,3 +237,30 @@ def test_cli_report_md(tmp_path) -> None:
 
 def test_cli_report_missing_input_exit_two(tmp_path) -> None:
     assert cli.main(["report", str(tmp_path / "nope.json")]) == 2
+
+
+def test_cli_docs_markdown(tmp_path) -> None:
+    contract = tmp_path / "c.yaml"
+    contract.write_text(
+        "version: 1\ndatabase: hermes\nschema: public\naudit: []\n"
+        "structure:\n  - table: users\n    columns:\n      - name: id\n"
+        "        type: integer\n    primary_key: [id]\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "schema.md"
+    assert cli.main(["docs", str(contract), "--format", "md", "-o", str(out)]) == 0
+    text = out.read_text(encoding="utf-8")
+    assert "```mermaid" in text
+    assert "## users" in text
+
+
+def test_cli_docs_html(tmp_path) -> None:
+    contract = tmp_path / "c.yaml"
+    contract.write_text(
+        "version: 1\ndatabase: hermes\nschema: public\naudit: []\n"
+        "structure:\n  - table: users\n    columns:\n      - name: id\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "schema.html"
+    assert cli.main(["docs", str(contract), "--format", "html", "-o", str(out)]) == 0
+    assert out.read_text(encoding="utf-8").startswith("<!doctype html>")
