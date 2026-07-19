@@ -111,6 +111,13 @@ version: 1
 database: your_db
 schema: public
 
+# Optional governance policy. Controls how *drift* (objects present in the
+# database but not declared here) is reported: error | warning | ignore.
+# Defaults to "ignore", so partial contracts stay valid.
+settings:
+  unexpected_tables: warning
+  unexpected_columns: ignore
+
 structure:
   - table: users
     columns:
@@ -118,6 +125,11 @@ structure:
         type: integer      # aliases like int / varchar / timestamptz are accepted
         nullable: false
       - name: email        # a bare string checks presence only
+        type: varchar(255) # inline parameters check length…
+      - name: amount
+        type: numeric(10, 2) # …and precision / scale
+      - name: status
+        default: active    # best-effort default comparison (casts/quotes ignored)
     primary_key: [id]
     foreign_keys:
       - columns: [org_id]
@@ -133,7 +145,20 @@ audit:
     required_columns: [created_at, updated_at]
 ```
 
-See [`contracts/example-users.yaml`](contracts/example-users.yaml) for a complete example.
+Column parameters can also be written explicitly (`max_length`, `precision`,
+`scale`) instead of inline in `type`. See
+[`contracts/example-users.yaml`](contracts/example-users.yaml) for a complete example.
+
+### Checks
+
+| Check | Verifies |
+| --- | --- |
+| `structure` | Declared tables exist |
+| `columns` | Column presence, type, nullability, length/precision/scale, default |
+| `constraints` | Primary keys and foreign keys |
+| `indexes` | Declared indexes exist |
+| `audit` | Governance rules (required columns per table) |
+| `drift` | Objects present in the DB but not declared (opt-in via `settings`) |
 
 ## Report format
 
@@ -214,7 +239,8 @@ The Data Gate is a standalone component of the Patrick AI Factory platform.
 - [x] **Sprint 5** — JSON report & exit codes
 - [x] **Sprint 6** — GitHub Actions CI (lint, format, tests, integration)
 - [x] **Sprint 7** — Documentation
-- [ ] Warning-level (non-blocking) findings & severity policy per check
-- [ ] Detection of unexpected/extra objects (drift in the other direction)
-- [ ] Column type precision (length, precision/scale) and default-value checks
+- [x] Warning-level (non-blocking) findings & severity policy (`settings`)
+- [x] Detection of unexpected/extra objects (drift)
+- [x] Column type precision (length, precision/scale) and default-value checks
 - [ ] Multi-schema contracts
+- [ ] Per-check severity overrides (e.g. treat a missing index as a warning)

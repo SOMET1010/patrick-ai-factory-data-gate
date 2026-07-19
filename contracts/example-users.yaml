@@ -6,6 +6,12 @@ version: 1
 database: datagate_ci
 schema: public
 
+# Governance policy (optional). Uncomment to also fail on / warn about objects
+# that exist in the database but are not declared below.
+# settings:
+#   unexpected_tables: warning
+#   unexpected_columns: ignore
+
 structure:
   - table: organizations
     columns:
