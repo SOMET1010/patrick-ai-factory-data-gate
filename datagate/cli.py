@@ -17,6 +17,7 @@ subcommand) is treated as ``datagate verify <contract> [...]``.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 from collections.abc import Sequence
@@ -26,6 +27,7 @@ from datagate import __version__
 from datagate.differ import diff_contracts
 from datagate.exceptions import DataGateError
 from datagate.report import DEFAULT_REPORT_PATH, AggregateReport, Report, Status
+from datagate.reporting import render_html, render_markdown
 from datagate.verifier import (
     generate_contract,
     resolve_mapping,
@@ -34,7 +36,7 @@ from datagate.verifier import (
     validate_contract,
 )
 
-SUBCOMMANDS = ("verify", "generate", "diff")
+SUBCOMMANDS = ("verify", "generate", "diff", "report")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -111,6 +113,29 @@ def build_parser() -> argparse.ArgumentParser:
         "-o", "--output", default=None, help="Write the diff to a file instead of stdout."
     )
     diff.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable verbose (DEBUG) logging."
+    )
+
+    # -- report -----------------------------------------------------------------
+    report = subparsers.add_parser(
+        "report", help="Render a JSON verify report as HTML or Markdown."
+    )
+    report.add_argument(
+        "input",
+        nargs="?",
+        default=str(DEFAULT_REPORT_PATH),
+        help=f"JSON report to render (default: {DEFAULT_REPORT_PATH}).",
+    )
+    report.add_argument(
+        "--format", choices=("html", "md"), default="html", help="Output format."
+    )
+    report.add_argument(
+        "-o",
+        "--output",
+        default=None,
+        help="Output path (default: artifacts/report.<ext>).",
+    )
+    report.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose (DEBUG) logging."
     )
 
@@ -238,6 +263,32 @@ def _cmd_diff(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
+def _cmd_report(args: argparse.Namespace) -> int:
+    try:
+        data = json.loads(Path(args.input).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"ERROR: could not read JSON report {args.input}: {exc}", file=sys.stderr)
+        return Status.ERROR.exit_code
+
+    if args.format == "md":
+        rendered = render_markdown(data)
+        default_out = Path("artifacts") / "report.md"
+    else:
+        rendered = render_html(data)
+        default_out = Path("artifacts") / "report.html"
+
+    output = Path(args.output) if args.output else default_out
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(rendered, encoding="utf-8")
+    except OSError as exc:  # pragma: no cover - filesystem edge case
+        print(f"ERROR: could not write report to {output}: {exc}", file=sys.stderr)
+        return Status.ERROR.exit_code
+
+    print(f"[OK] report written to {output}")
+    return Status.PASS.exit_code
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(_normalise_argv(argv))
@@ -252,6 +303,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _cmd_generate(args)
     if args.command == "diff":
         return _cmd_diff(args)
+    if args.command == "report":
+        return _cmd_report(args)
     return _cmd_verify(args)
 
 

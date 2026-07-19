@@ -109,6 +109,7 @@ datagate verify contracts/your_db.yaml
 | `datagate verify <contract>` | Verify a live schema against a contract (writes the JSON report) |
 | `datagate verify <directory>` | Verify **every** `*.yaml`/`*.yml` contract under a directory (recursively) and write one aggregate report |
 | `datagate diff <source> <target>` | Compare two schema sources (contract files or DSNs) and classify the changes |
+| `datagate report [report.json]` | Render a verify report as HTML or Markdown with a conformance score |
 
 > Backward compatible: `datagate <contract>` (no subcommand) is treated as
 > `datagate verify <contract>`.
@@ -153,6 +154,22 @@ Compatibility    : BREAKING
 
 Exit code: `0` when there are no breaking changes, `1` when there are (so `diff`
 can gate a deployment), `2` on error.
+
+### Human-readable report (`report`)
+
+Render any `verify` JSON report (single or aggregate) as a self-contained HTML
+page or a Markdown document, with a **conformance score** for reviews and audits:
+
+```bash
+datagate verify contracts/ -o artifacts/data-gate-result.json
+datagate report artifacts/data-gate-result.json --format html -o artifacts/report.html
+datagate report artifacts/data-gate-result.json --format md   -o artifacts/report.md
+```
+
+The score is `100` for PASS, `0` for ERROR, and `max(0, 100 - 10*errors -
+2*warnings)` for FAIL (mean across contracts for an aggregate report). The HTML
+is dependency-free (inlined CSS) so it renders anywhere and is safe to attach as
+a CI artifact.
 
 **`verify`** options:
 
@@ -389,7 +406,7 @@ The Data Gate is a standalone component of the Patrick AI Factory platform.
 - [x] `datagate generate` — draft a contract from a live schema
 - [x] `datagate verify <directory>` — verify many contracts at once
 - [x] `datagate diff` — compare two schemas or contracts, classify SAFE/WARNING/BREAKING
-- [ ] `datagate report` — render the JSON report as Markdown/HTML (+ compatibility score)
+- [x] `datagate report` — render a verify report as HTML/Markdown with a conformance score
 - [ ] `datagate docs` — generate schema documentation (Markdown/HTML, ER diagram)
 - [ ] Multi-schema contracts
 - [ ] Per-check severity overrides (e.g. treat a missing index as a warning)

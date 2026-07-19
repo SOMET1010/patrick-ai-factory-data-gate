@@ -189,3 +189,51 @@ def test_cli_diff_error_exit_two(tmp_path) -> None:
     )
     # target missing file and not a DSN -> resolve tries DSN -> ConfigurationError
     assert cli.main(["diff", str(src), "/tmp/nope-not-a-file.yaml"]) == 2
+
+
+def test_cli_report_html(tmp_path) -> None:
+    import json as _json
+
+    report_json = tmp_path / "result.json"
+    report_json.write_text(
+        _json.dumps(
+            {
+                "status": "pass",
+                "database": "d",
+                "schema": "public",
+                "summary": {"errors": 0, "warnings": 0, "total": 0},
+                "findings": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "report.html"
+    assert cli.main(["report", str(report_json), "--format", "html", "-o", str(out)]) == 0
+    assert out.read_text(encoding="utf-8").startswith("<!doctype html>")
+
+
+def test_cli_report_md(tmp_path) -> None:
+    import json as _json
+
+    report_json = tmp_path / "result.json"
+    report_json.write_text(
+        _json.dumps(
+            {
+                "status": "fail",
+                "database": "d",
+                "schema": "public",
+                "summary": {"errors": 1, "warnings": 0, "total": 1},
+                "findings": [
+                    {"check": "c", "severity": "error", "target": "t", "message": "m"}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "report.md"
+    assert cli.main(["report", str(report_json), "--format", "md", "-o", str(out)]) == 0
+    assert "# Data Gate Report" in out.read_text(encoding="utf-8")
+
+
+def test_cli_report_missing_input_exit_two(tmp_path) -> None:
+    assert cli.main(["report", str(tmp_path / "nope.json")]) == 2

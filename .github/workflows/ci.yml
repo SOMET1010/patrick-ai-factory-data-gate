@@ -100,9 +100,18 @@ jobs:
             --format json -o artifacts/data-gate-diff.json
           echo "Diff exit code: $?"
 
+      - name: Render HTML and Markdown reports
+        run: |
+          datagate report artifacts/data-gate-directory.json \
+            --format html -o artifacts/report.html
+          datagate report artifacts/data-gate-directory.json \
+            --format md -o artifacts/report.md
+
       - name: Upload verification reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: data-gate-result
-          path: artifacts/*.json
+          path: |
+            artifacts/*.json
+            artifacts/report.*
