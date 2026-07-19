@@ -108,6 +108,7 @@ datagate verify contracts/your_db.yaml
 | `datagate generate` | Introspect a live schema and write a draft YAML contract |
 | `datagate verify <contract>` | Verify a live schema against a contract (writes the JSON report) |
 | `datagate verify <directory>` | Verify **every** `*.yaml`/`*.yml` contract under a directory (recursively) and write one aggregate report |
+| `datagate diff <source> <target>` | Compare two schema sources (contract files or DSNs) and classify the changes |
 
 > Backward compatible: `datagate <contract>` (no subcommand) is treated as
 > `datagate verify <contract>`.
@@ -121,6 +122,37 @@ datagate verify contracts/ -o artifacts/data-gate-result.json
 Every contract is checked independently; the aggregate JSON report lists each
 result plus a global summary, and the exit code is the worst outcome
 (`0` all pass, `1` at least one FAIL, `2` at least one ERROR).
+
+### Comparing two schemas (`diff`)
+
+Each side is either a contract file or a DSN (introspected read-only). Changes
+are classified `SAFE` / `WARNING` / `BREAKING`:
+
+```bash
+# contract v1 vs v2
+datagate diff contracts/hermes.yaml contracts/hermes-next.yaml
+
+# dev database vs prod database
+datagate diff "$DEV_DSN" "$PROD_DSN" --schema public --format json
+```
+
+```
++ audit_log
++ users.last_login  (new NOT NULL column)
+~ users.email  (type varchar -> text)
+- invoices
+
+Summary
+-------
+Safe additions   : 1
+Warnings         : 1
+Breaking changes : 2
+
+Compatibility    : BREAKING
+```
+
+Exit code: `0` when there are no breaking changes, `1` when there are (so `diff`
+can gate a deployment), `2` on error.
 
 **`verify`** options:
 
@@ -356,9 +388,9 @@ The Data Gate is a standalone component of the Patrick AI Factory platform.
 - [x] Deployable component: Docker image + reusable GitHub Action
 - [x] `datagate generate` — draft a contract from a live schema
 - [x] `datagate verify <directory>` — verify many contracts at once
-- [ ] `datagate diff` — compare two schemas or two contracts
-- [ ] `datagate docs` — generate schema documentation (Markdown/HTML)
-- [ ] `datagate report` — render the JSON report as Markdown/HTML
+- [x] `datagate diff` — compare two schemas or contracts, classify SAFE/WARNING/BREAKING
+- [ ] `datagate report` — render the JSON report as Markdown/HTML (+ compatibility score)
+- [ ] `datagate docs` — generate schema documentation (Markdown/HTML, ER diagram)
 - [ ] Multi-schema contracts
 - [ ] Per-check severity overrides (e.g. treat a missing index as a warning)
 - [ ] Publish the Docker image to a registry (GHCR)

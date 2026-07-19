@@ -23,11 +23,18 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from datagate import __version__
+from datagate.differ import diff_contracts
 from datagate.exceptions import DataGateError
 from datagate.report import DEFAULT_REPORT_PATH, AggregateReport, Report, Status
-from datagate.verifier import generate_contract, run, run_directory, validate_contract
+from datagate.verifier import (
+    generate_contract,
+    resolve_mapping,
+    run,
+    run_directory,
+    validate_contract,
+)
 
-SUBCOMMANDS = ("verify", "generate")
+SUBCOMMANDS = ("verify", "generate", "diff")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -85,6 +92,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Where to write the contract (default: contracts/<database>.yaml).",
     )
     generate.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable verbose (DEBUG) logging."
+    )
+
+    # -- diff -------------------------------------------------------------------
+    diff = subparsers.add_parser(
+        "diff", help="Compare two schema sources (contract files or DSNs)."
+    )
+    diff.add_argument("source", help="Baseline: a contract file path or a DSN.")
+    diff.add_argument("target", help="Comparison: a contract file path or a DSN.")
+    diff.add_argument(
+        "--schema", default="public", help="Schema to introspect for DSN sides."
+    )
+    diff.add_argument(
+        "--format", choices=("text", "json"), default="text", help="Output format."
+    )
+    diff.add_argument(
+        "-o", "--output", default=None, help="Write the diff to a file instead of stdout."
+    )
+    diff.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose (DEBUG) logging."
     )
 
@@ -186,6 +212,32 @@ def _cmd_generate(args: argparse.Namespace) -> int:
     return Status.PASS.exit_code
 
 
+def _cmd_diff(args: argparse.Namespace) -> int:
+    try:
+        source = resolve_mapping(args.source, schema_name=args.schema)
+        target = resolve_mapping(args.target, schema_name=args.schema)
+    except DataGateError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return Status.ERROR.exit_code
+
+    result = diff_contracts(source, target)
+    rendered = result.to_json() if args.format == "json" else result.to_text()
+
+    if args.output:
+        try:
+            out = Path(args.output)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(rendered + "\n", encoding="utf-8")
+        except OSError as exc:  # pragma: no cover - filesystem edge case
+            print(f"ERROR: could not write diff to {args.output}: {exc}", file=sys.stderr)
+            return Status.ERROR.exit_code
+    else:
+        print(rendered)
+
+    # Exit 1 when breaking changes are present, so diff can gate a pipeline.
+    return result.exit_code
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(_normalise_argv(argv))
@@ -198,6 +250,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "generate":
         return _cmd_generate(args)
+    if args.command == "diff":
+        return _cmd_diff(args)
     return _cmd_verify(args)
 
 

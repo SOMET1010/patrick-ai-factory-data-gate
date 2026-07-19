@@ -144,3 +144,48 @@ def test_cli_verify_directory(tmp_path, monkeypatch) -> None:
 def test_cli_verify_empty_directory(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(cli, "run_directory", lambda *a, **k: [])
     assert cli.main(["verify", str(tmp_path)]) == 2
+
+
+def test_cli_diff_files(tmp_path, capsys) -> None:
+    src = tmp_path / "v1.yaml"
+    dst = tmp_path / "v2.yaml"
+    src.write_text(
+        "version: 1\ndatabase: d\nschema: public\naudit: []\n"
+        "structure:\n  - table: users\n    columns:\n      - name: id\n",
+        encoding="utf-8",
+    )
+    dst.write_text(
+        "version: 1\ndatabase: d\nschema: public\naudit: []\n"
+        "structure:\n  - table: users\n    columns:\n      - name: id\n"
+        "  - table: audit_log\n    columns:\n      - name: id\n",
+        encoding="utf-8",
+    )
+    # audit_log added -> SAFE -> exit 0
+    assert cli.main(["diff", str(src), str(dst)]) == 0
+    assert "+ audit_log" in capsys.readouterr().out
+
+
+def test_cli_diff_breaking_exit_one(tmp_path) -> None:
+    src = tmp_path / "v1.yaml"
+    dst = tmp_path / "v2.yaml"
+    src.write_text(
+        "version: 1\ndatabase: d\nschema: public\naudit: []\n"
+        "structure:\n  - table: users\n    columns:\n      - name: id\n",
+        encoding="utf-8",
+    )
+    # users table removed -> breaking -> exit 1
+    dst.write_text(
+        "version: 1\ndatabase: d\nschema: public\naudit: []\nstructure: []\n",
+        encoding="utf-8",
+    )
+    assert cli.main(["diff", str(src), str(dst)]) == 1
+
+
+def test_cli_diff_error_exit_two(tmp_path) -> None:
+    src = tmp_path / "v1.yaml"
+    src.write_text(
+        "version: 1\ndatabase: d\nschema: public\naudit: []\nstructure: []\n",
+        encoding="utf-8",
+    )
+    # target missing file and not a DSN -> resolve tries DSN -> ConfigurationError
+    assert cli.main(["diff", str(src), "/tmp/nope-not-a-file.yaml"]) == 2
