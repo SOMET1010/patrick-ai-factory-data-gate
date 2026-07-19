@@ -1,0 +1,49 @@
+name: "Patrick AI Factory Data Gate"
+description: "Verify a live PostgreSQL schema against a YAML contract (read-only)."
+author: "Patrick AI Factory"
+
+branding:
+  icon: "shield"
+  color: "blue"
+
+inputs:
+  contract:
+    description: "Path to the YAML contract describing the expected schema."
+    required: true
+  dsn:
+    description: >-
+      PostgreSQL DSN for a read-only role. If empty, the DATAGATE_DSN
+      environment variable of the job is used instead.
+    required: false
+    default: ""
+  output:
+    description: "Path to the JSON report to produce."
+    required: false
+    default: "artifacts/data-gate-result.json"
+
+outputs:
+  report:
+    description: "Path to the generated JSON report."
+    value: ${{ steps.run.outputs.report }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install Data Gate
+      shell: bash
+      run: pip install "${{ github.action_path }}"
+
+    - name: Run Data Gate
+      id: run
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.dsn }}" ]; then
+          export DATAGATE_DSN="${{ inputs.dsn }}"
+        fi
+        datagate "${{ inputs.contract }}" -o "${{ inputs.output }}"
+        echo "report=${{ inputs.output }}" >> "$GITHUB_OUTPUT"

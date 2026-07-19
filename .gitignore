@@ -5,12 +5,19 @@
 __pycache__/
 *.py[cod]
 
-# Pytest
+# Pytest / Ruff caches
 .pytest_cache/
+.ruff_cache/
 
 # Coverage
 .coverage
 htmlcov/
+coverage.xml
+
+# Secrets / local configuration (never commit)
+.env
+.env.*
+!.env.example
 
 # Generated artifacts
 artifacts/*.log
@@ -19,3 +26,7 @@ artifacts/*.json
 # Keep the directory
 !artifacts/.gitkeep
 *.egg-info/
+
+# Build output
+build/
+dist/
