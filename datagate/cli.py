@@ -1,13 +1,17 @@
 """Command-line entry point for the Data Gate.
 
-Thin adapter: parse arguments, configure logging, delegate to
-:mod:`datagate.verifier`, persist the JSON report and translate the outcome into
-a process exit code.
+Subcommand CLI (thin adapter — no business logic):
+
+    datagate verify   <contract> [--dsn ...] [-o ...] [--contract-only]
+    datagate generate [--dsn ...] [--schema public] [-o path]
+
+For backward compatibility, the legacy form ``datagate <contract> [...]`` (no
+subcommand) is treated as ``datagate verify <contract> [...]``.
 
     Exit codes:
-        0  PASS   – the schema conforms to the contract
+        0  PASS   – schema conforms / contract valid / contract generated
         1  FAIL   – at least one conformance error was found
-        2  ERROR  – the run could not be completed (bad contract, no DB, ...)
+        2  ERROR  – the run could not be completed
 """
 
 from __future__ import annotations
@@ -16,48 +20,71 @@ import argparse
 import logging
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 from datagate import __version__
+from datagate.exceptions import DataGateError
 from datagate.report import DEFAULT_REPORT_PATH, Report, Status
-from datagate.verifier import run, validate_contract
+from datagate.verifier import generate_contract, run, validate_contract
+
+SUBCOMMANDS = ("verify", "generate")
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="datagate",
-        description="Read-only PostgreSQL schema conformance checker.",
+        description="Read-only PostgreSQL schema governance tool.",
     )
-    parser.add_argument(
-        "contract",
-        help="Path to the YAML contract describing the expected schema.",
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    subparsers = parser.add_subparsers(dest="command")
+
+    # -- verify -----------------------------------------------------------------
+    verify = subparsers.add_parser(
+        "verify", help="Verify a live schema against a YAML contract."
     )
-    parser.add_argument(
+    verify.add_argument("contract", help="Path to the YAML contract.")
+    verify.add_argument(
         "--dsn",
         default=None,
         help="PostgreSQL DSN. Defaults to the DATAGATE_DSN environment variable.",
     )
-    parser.add_argument(
+    verify.add_argument(
         "-o",
         "--output",
         default=str(DEFAULT_REPORT_PATH),
         help=f"Path to the JSON report (default: {DEFAULT_REPORT_PATH}).",
     )
-    parser.add_argument(
+    verify.add_argument(
         "--contract-only",
         action="store_true",
         help="Validate the contract only, without connecting to a database.",
     )
-    parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Enable verbose (DEBUG) logging.",
+    verify.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable verbose (DEBUG) logging."
     )
-    parser.add_argument(
-        "--version",
-        action="version",
-        version=f"%(prog)s {__version__}",
+
+    # -- generate ---------------------------------------------------------------
+    generate = subparsers.add_parser(
+        "generate", help="Generate a draft contract from a live schema."
     )
+    generate.add_argument(
+        "--dsn",
+        default=None,
+        help="PostgreSQL DSN. Defaults to the DATAGATE_DSN environment variable.",
+    )
+    generate.add_argument(
+        "--schema", default="public", help="Schema to introspect (default: public)."
+    )
+    generate.add_argument(
+        "-o",
+        "--output",
+        default=None,
+        help="Where to write the contract (default: contracts/<database>.yaml).",
+    )
+    generate.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable verbose (DEBUG) logging."
+    )
+
     return parser
 
 
@@ -66,6 +93,18 @@ def _configure_logging(verbose: bool) -> None:
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(levelname)s %(name)s: %(message)s",
     )
+
+
+def _normalise_argv(argv: Sequence[str] | None) -> list[str]:
+    """Insert the implicit ``verify`` subcommand for the legacy invocation."""
+    args = list(sys.argv[1:] if argv is None else argv)
+    if not args:
+        return args
+    first = args[0]
+    if first in SUBCOMMANDS or first in ("-h", "--help", "--version"):
+        return args
+    # Legacy form: `datagate <contract> [...]` -> `datagate verify <contract> [...]`
+    return ["verify", *args]
 
 
 def _print_summary(report: Report) -> None:
@@ -78,11 +117,7 @@ def _print_summary(report: Report) -> None:
         print(f"  {report.error_count} error(s), {report.warning_count} warning(s)")
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    _configure_logging(args.verbose)
-
+def _cmd_verify(args: argparse.Namespace) -> int:
     if args.contract_only:
         report = validate_contract(args.contract)
     else:
@@ -96,6 +131,40 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     _print_summary(report)
     return report.exit_code
+
+
+def _cmd_generate(args: argparse.Namespace) -> int:
+    try:
+        database, yaml_text = generate_contract(dsn=args.dsn, schema_name=args.schema)
+    except DataGateError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return Status.ERROR.exit_code
+
+    output = Path(args.output) if args.output else Path("contracts") / f"{database}.yaml"
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(yaml_text, encoding="utf-8")
+    except OSError as exc:  # pragma: no cover - filesystem edge case
+        print(f"ERROR: could not write contract to {output}: {exc}", file=sys.stderr)
+        return Status.ERROR.exit_code
+
+    print(f"[OK] contract written to {output}")
+    return Status.PASS.exit_code
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(_normalise_argv(argv))
+
+    if args.command is None:
+        parser.print_help()
+        return Status.ERROR.exit_code
+
+    _configure_logging(args.verbose)
+
+    if args.command == "generate":
+        return _cmd_generate(args)
+    return _cmd_verify(args)
 
 
 if __name__ == "__main__":

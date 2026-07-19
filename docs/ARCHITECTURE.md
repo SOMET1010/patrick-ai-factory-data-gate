@@ -67,6 +67,18 @@ raising check is logged and skipped rather than aborting the whole run.
 **Why:** adding a verification means adding a module and registering it in
 `default_checks()`; existing checks stay untouched (open/closed principle).
 
+## Decision: `generate` and `verify` share one introspection engine
+
+`datagate generate` (draft a contract from a live schema) and `datagate verify`
+(check a schema against a contract) both go through the same `Introspector` and
+domain `Schema` model. `generate` simply serialises that model to YAML
+(`generator.py`); `verify` compares it against the contract. They can therefore
+never disagree about how the database is read, and a generated contract verifies
+clean against the schema it came from (covered by a round-trip test).
+
+**Why:** one source of truth for schema reading keeps the growing command
+surface (`generate`, `verify`, future `diff`/`docs`) consistent.
+
 ## Decision: status → exit code mapping lives in the domain
 
 `Status.PASS/FAIL/ERROR` own their exit codes (`0/1/2`). Expected failures

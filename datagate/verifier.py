@@ -18,6 +18,7 @@ from datagate.contract import Contract
 from datagate.db import connect
 from datagate.engine import run_checks
 from datagate.exceptions import ContractError, DataGateError
+from datagate.generator import contract_from_schema, dump_contract
 from datagate.introspect import Introspector
 from datagate.report import Report, build_report, error_report
 
@@ -117,3 +118,29 @@ def validate_contract(contract_path: str | Path) -> Report:
             "audit_rules": len(contract.audit),
         },
     )
+
+
+def generate_contract(
+    *,
+    dsn: str | None = None,
+    schema_name: str = "public",
+) -> tuple[str, str]:
+    """Introspect a live schema and return ``(database, yaml_contract)``.
+
+    Read-only: the same introspection engine used by ``verify`` is reused here,
+    so ``generate`` and ``verify`` can never diverge in how they read the schema.
+    Raises :class:`~datagate.exceptions.DataGateError` on any failure.
+    """
+    with connect(dsn) as connection:
+        introspector = Introspector(connection)
+        database = introspector.current_database()
+        schema = introspector.introspect(schema_name)
+
+    mapping = contract_from_schema(schema, database)
+    logger.info(
+        "Generated contract for %s/%s: %d table(s)",
+        database,
+        schema_name,
+        len(schema.tables),
+    )
+    return database, dump_contract(mapping)

@@ -28,6 +28,9 @@ class FakeCursor:
     def fetchall(self) -> list[tuple]:
         return self._current
 
+    def fetchone(self) -> tuple | None:
+        return self._current[0] if self._current else None
+
 
 class FakeConnection:
     """Connection stub yielding :class:`FakeCursor` instances."""

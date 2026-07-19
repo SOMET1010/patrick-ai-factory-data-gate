@@ -84,15 +84,34 @@ pip install -e ".[dev]"
 
 ## Usage
 
+The recommended lifecycle turns the database into a versioned contract, then
+guards it:
+
+```
+PostgreSQL ──► datagate generate ──► contract.yaml ──► git ──► datagate verify
+```
+
 ```bash
 export DATAGATE_DSN="postgresql://datagate_ro:***@localhost:5432/your_db"
 
-datagate contracts/example-users.yaml
-# or specify the report location / DSN explicitly:
-datagate contracts/example-users.yaml --dsn "$DATAGATE_DSN" -o artifacts/data-gate-result.json
+# 1. Generate a draft contract from the live schema (once, then commit & trim it)
+datagate generate --schema public -o contracts/your_db.yaml
+
+# 2. Verify the schema against the committed contract (in CI)
+datagate verify contracts/your_db.yaml
 ```
 
-Options:
+### Commands
+
+| Command | Purpose |
+| --- | --- |
+| `datagate generate` | Introspect a live schema and write a draft YAML contract |
+| `datagate verify <contract>` | Verify a live schema against a contract (writes the JSON report) |
+
+> Backward compatible: `datagate <contract>` (no subcommand) is treated as
+> `datagate verify <contract>`.
+
+**`verify`** options:
 
 | Flag | Description |
 | --- | --- |
@@ -100,12 +119,19 @@ Options:
 | `-o`, `--output` | Report path (default `artifacts/data-gate-result.json`) |
 | `--contract-only` | Validate the contract only, without connecting to a database |
 | `-v`, `--verbose` | Verbose (DEBUG) logging |
-| `--version` | Print version |
+
+**`generate`** options:
+
+| Flag | Description |
+| --- | --- |
+| `--dsn` | PostgreSQL DSN (defaults to `DATAGATE_DSN`) |
+| `--schema` | Schema to introspect (default `public`) |
+| `-o`, `--output` | Output path (default `contracts/<database>.yaml`) |
 
 Validate a contract without a database (fast CI lint, exit `0`/`2`):
 
 ```bash
-datagate contracts/hermes-review.yaml --contract-only
+datagate verify contracts/hermes-review.yaml --contract-only
 ```
 
 ## Contract format
@@ -309,6 +335,10 @@ The Data Gate is a standalone component of the Patrick AI Factory platform.
 - [x] Detection of unexpected/extra objects (drift)
 - [x] Column type precision (length, precision/scale) and default-value checks
 - [x] Deployable component: Docker image + reusable GitHub Action
+- [x] `datagate generate` — draft a contract from a live schema
+- [ ] `datagate diff` — compare two schemas or two contracts
+- [ ] `datagate docs` — generate schema documentation (Markdown/HTML)
+- [ ] `datagate report` — render the JSON report as Markdown/HTML
 - [ ] Multi-schema contracts
 - [ ] Per-check severity overrides (e.g. treat a missing index as a warning)
 - [ ] Publish the Docker image to a registry (GHCR)

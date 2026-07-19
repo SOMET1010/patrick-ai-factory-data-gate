@@ -111,3 +111,21 @@ def test_validate_contract_invalid(tmp_path) -> None:
     report = verifier.validate_contract(bad)
     assert report.status is Status.ERROR
     assert report.exit_code == 2
+
+
+GEN_ROWS = {
+    "current_database": [("mydb",)],
+    "tables": [("users", "BASE TABLE")],
+    "columns": [("users", "id", "integer", "NO", None, 1, None, 32, 0)],
+    "primary_keys": [("users", "id")],
+    "foreign_keys": [],
+    "indexes": [],
+}
+
+
+def test_generate_contract(monkeypatch) -> None:
+    _patch_connection(monkeypatch, FakeConnection(GEN_ROWS))
+    database, yaml_text = verifier.generate_contract(dsn="ignored", schema_name="public")
+    assert database == "mydb"
+    assert "table: users" in yaml_text
+    assert "database: mydb" in yaml_text
