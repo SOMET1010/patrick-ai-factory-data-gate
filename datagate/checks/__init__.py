@@ -10,6 +10,7 @@ from datagate.checks.audit import AuditCheck
 from datagate.checks.base import Check
 from datagate.checks.columns import ColumnsCheck
 from datagate.checks.constraints import ConstraintsCheck
+from datagate.checks.drift import DriftCheck
 from datagate.checks.indexes import IndexesCheck
 from datagate.checks.structure import StructureCheck
 
@@ -20,6 +21,7 @@ __all__ = [
     "ConstraintsCheck",
     "IndexesCheck",
     "AuditCheck",
+    "DriftCheck",
     "default_checks",
 ]
 
@@ -32,4 +34,5 @@ def default_checks() -> list[Check]:
         ConstraintsCheck(),
         IndexesCheck(),
         AuditCheck(),
+        DriftCheck(),
     ]

@@ -6,6 +6,7 @@ from datagate.checks import (
     AuditCheck,
     ColumnsCheck,
     ConstraintsCheck,
+    DriftCheck,
     IndexesCheck,
     StructureCheck,
     default_checks,
@@ -15,16 +16,17 @@ from datagate.report import Severity
 from tests.helpers import sample_schema
 
 
-def _contract(structure=None, audit=None) -> Contract:
-    return Contract.from_mapping(
-        {
-            "version": 1,
-            "database": "db",
-            "schema": "public",
-            "structure": structure or [],
-            "audit": audit or [],
-        }
-    )
+def _contract(structure=None, audit=None, settings=None) -> Contract:
+    data = {
+        "version": 1,
+        "database": "db",
+        "schema": "public",
+        "structure": structure or [],
+        "audit": audit or [],
+    }
+    if settings is not None:
+        data["settings"] = settings
+    return Contract.from_mapping(data)
 
 
 def test_default_checks_names() -> None:
@@ -34,6 +36,7 @@ def test_default_checks_names() -> None:
         "constraints",
         "indexes",
         "audit",
+        "drift",
     ]
 
 
@@ -157,3 +160,104 @@ def test_audit_required_columns() -> None:
     missing_table = _contract(audit=[{"table": "ghost", "required_columns": ["x"]}])
     findings = AuditCheck().run(missing_table, sample_schema())
     assert findings[0].target == "table:ghost"
+
+
+def test_columns_precision_and_length() -> None:
+    # sample_schema has no length/precision info, so declaring them should fail.
+    contract = _contract(
+        structure=[
+            {
+                "table": "users",
+                "columns": [{"name": "email", "type": "varchar(255)"}],
+            }
+        ]
+    )
+    findings = ColumnsCheck().run(contract, sample_schema())
+    # email is 'text' in the sample schema -> type mismatch + length mismatch
+    assert any("max length" in f.message for f in findings)
+
+
+def test_columns_default_normalisation() -> None:
+    from datagate.models import Column, Schema, Table
+
+    schema = Schema(
+        name="public",
+        tables=(
+            Table(
+                name="t",
+                columns=(
+                    Column(
+                        name="status",
+                        data_type="text",
+                        is_nullable=False,
+                        default="'active'::text",
+                    ),
+                ),
+            ),
+        ),
+    )
+    # Contract declares the logical default 'active'; the cast/quotes must not
+    # produce a false positive.
+    ok = _contract(
+        structure=[{"table": "t", "columns": [{"name": "status", "default": "active"}]}]
+    )
+    assert ColumnsCheck().run(ok, schema) == []
+
+    bad = _contract(
+        structure=[{"table": "t", "columns": [{"name": "status", "default": "off"}]}]
+    )
+    findings = ColumnsCheck().run(bad, schema)
+    assert len(findings) == 1
+    assert "default" in findings[0].message
+
+
+def test_drift_ignored_by_default() -> None:
+    contract = _contract(structure=[{"table": "users"}])
+    # organizations is undeclared but drift defaults to 'ignore'.
+    assert DriftCheck().run(contract, sample_schema()) == []
+
+
+def test_drift_unexpected_table() -> None:
+    contract = _contract(
+        structure=[{"table": "users"}],
+        settings={"unexpected_tables": "error"},
+    )
+    findings = DriftCheck().run(contract, sample_schema())
+    assert len(findings) == 1
+    assert findings[0].target == "table:organizations"
+    assert findings[0].severity is Severity.ERROR
+
+
+def test_drift_unexpected_table_warning() -> None:
+    contract = _contract(
+        structure=[{"table": "users"}, {"table": "organizations"}],
+        settings={"unexpected_tables": "warning"},
+    )
+    assert DriftCheck().run(contract, sample_schema()) == []
+
+
+def test_drift_unexpected_columns() -> None:
+    contract = _contract(
+        structure=[
+            {
+                "table": "users",
+                "columns": [{"name": "id"}, {"name": "email"}],
+            }
+        ],
+        settings={"unexpected_columns": "warning"},
+    )
+    findings = DriftCheck().run(contract, sample_schema())
+    # users has org_id, created_at, updated_at beyond the declared id/email.
+    undeclared = {f.target for f in findings}
+    assert "column:users.org_id" in undeclared
+    assert "column:users.created_at" in undeclared
+    assert all(f.severity is Severity.WARNING for f in findings)
+
+
+def test_drift_columns_skipped_when_not_declared() -> None:
+    # A table declared without a columns list must not trigger column drift.
+    contract = _contract(
+        structure=[{"table": "users"}],
+        settings={"unexpected_columns": "error"},
+    )
+    assert DriftCheck().run(contract, sample_schema()) == []

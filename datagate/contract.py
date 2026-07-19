@@ -58,11 +58,21 @@ def load_contract(path: str | Path) -> dict[str, Any]:
 
 @dataclass(frozen=True)
 class ColumnSpec:
-    """Expectation about a single column."""
+    """Expectation about a single column.
+
+    ``type`` accepts either a bare type (``varchar``) or a parametrised type
+    (``varchar(255)``, ``numeric(10, 2)``); the parameters populate
+    ``max_length`` / ``precision`` / ``scale``. Those fields may also be set
+    explicitly, which takes precedence over anything parsed from ``type``.
+    """
 
     name: str
     type: str | None = None
     nullable: bool | None = None
+    max_length: int | None = None
+    precision: int | None = None
+    scale: int | None = None
+    default: str | None = None
 
 
 @dataclass(frozen=True)
@@ -102,6 +112,23 @@ class AuditRule:
     required_columns: tuple[str, ...] = ()
 
 
+#: Allowed severity policies for governance settings.
+POLICIES = ("error", "warning", "ignore")
+
+
+@dataclass(frozen=True)
+class Settings:
+    """Optional governance policy.
+
+    Controls how *drift* (objects present in the database but not declared in the
+    contract) is reported. Defaults to ``ignore`` so partial contracts stay valid
+    and existing behaviour is unchanged.
+    """
+
+    unexpected_tables: str = "ignore"
+    unexpected_columns: str = "ignore"
+
+
 @dataclass(frozen=True)
 class Contract:
     """A fully parsed, typed contract."""
@@ -111,6 +138,7 @@ class Contract:
     schema: str
     structure: tuple[TableSpec, ...] = ()
     audit: tuple[AuditRule, ...] = ()
+    settings: Settings = field(default_factory=Settings)
     raw: Mapping[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -132,6 +160,7 @@ class Contract:
             schema=str(data["schema"]),
             structure=_parse_structure(data.get("structure") or []),
             audit=_parse_audit(data.get("audit") or []),
+            settings=_parse_settings(data.get("settings")),
             raw=dict(data),
         )
 
@@ -185,16 +214,58 @@ def _parse_columns(raw: Any) -> tuple[ColumnSpec, ...]:
         name = entry.get("name")
         if not name:
             raise ContractError("each 'columns' entry needs a 'name'")
-        column_type = entry.get("type")
         nullable = entry.get("nullable")
+        base_type, max_length, precision, scale = _split_type(entry.get("type"))
+        default = entry.get("default")
         columns.append(
             ColumnSpec(
                 name=str(name),
-                type=None if column_type is None else str(column_type),
+                type=base_type,
                 nullable=None if nullable is None else bool(nullable),
+                # Explicit keys win over anything parsed from the type string.
+                max_length=_opt_int(entry.get("max_length"), max_length),
+                precision=_opt_int(entry.get("precision"), precision),
+                scale=_opt_int(entry.get("scale"), scale),
+                default=None if default is None else str(default),
             )
         )
     return tuple(columns)
+
+
+_CHAR_TYPES = {"varchar", "character varying", "char", "character", "bpchar"}
+
+
+def _opt_int(explicit: Any, parsed: int | None) -> int | None:
+    if explicit is not None:
+        return int(explicit)
+    return parsed
+
+
+def _split_type(
+    raw_type: Any,
+) -> tuple[str | None, int | None, int | None, int | None]:
+    """Split ``varchar(255)`` / ``numeric(10,2)`` into base type and parameters."""
+    if raw_type is None:
+        return None, None, None, None
+    text = str(raw_type).strip()
+    if "(" not in text:
+        return text, None, None, None
+
+    base, _, rest = text.partition("(")
+    base = base.strip()
+    args = [part.strip() for part in rest.rstrip(")").split(",") if part.strip()]
+    try:
+        numbers = [int(arg) for arg in args]
+    except ValueError:
+        return base, None, None, None
+
+    if len(numbers) >= 2:
+        return base, None, numbers[0], numbers[1]
+    if len(numbers) == 1:
+        if base.lower() in _CHAR_TYPES:
+            return base, numbers[0], None, None
+        return base, None, numbers[0], None
+    return base, None, None, None
 
 
 def _parse_foreign_keys(raw: Any) -> tuple[ForeignKeySpec, ...]:
@@ -250,3 +321,28 @@ def _parse_audit(raw: Any) -> tuple[AuditRule, ...]:
             )
         )
     return tuple(rules)
+
+
+def _parse_policy(value: Any, context: str) -> str:
+    if value is None:
+        return "ignore"
+    policy = str(value).strip().lower()
+    if policy not in POLICIES:
+        allowed = ", ".join(POLICIES)
+        raise ContractError(f"'{context}' must be one of: {allowed} (got '{value}')")
+    return policy
+
+
+def _parse_settings(raw: Any) -> Settings:
+    if raw is None:
+        return Settings()
+    if not isinstance(raw, Mapping):
+        raise ContractError("'settings' must be a mapping")
+    return Settings(
+        unexpected_tables=_parse_policy(
+            raw.get("unexpected_tables"), "settings.unexpected_tables"
+        ),
+        unexpected_columns=_parse_policy(
+            raw.get("unexpected_columns"), "settings.unexpected_columns"
+        ),
+    )
