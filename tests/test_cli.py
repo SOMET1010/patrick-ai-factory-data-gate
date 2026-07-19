@@ -72,3 +72,37 @@ def test_cli_contract_only(tmp_path, monkeypatch) -> None:
     code = cli.main(["c.yaml", "--contract-only", "-o", str(output)])
     assert code == 0
     assert captured["path"] == "c.yaml"
+
+
+def test_cli_generate_writes_contract(tmp_path, monkeypatch) -> None:
+    out = tmp_path / "hermes.yaml"
+    monkeypatch.setattr(
+        cli, "generate_contract", lambda **k: ("hermes", "# draft\nversion: 1\n")
+    )
+    code = cli.main(["generate", "--dsn", "postgres://x", "-o", str(out)])
+    assert code == 0
+    assert out.read_text(encoding="utf-8").startswith("# draft")
+
+
+def test_cli_generate_error_returns_two(monkeypatch, capsys) -> None:
+    from datagate.exceptions import DatabaseConnectionError
+
+    def boom(**k):
+        raise DatabaseConnectionError("no db")
+
+    monkeypatch.setattr(cli, "generate_contract", boom)
+    assert cli.main(["generate", "--dsn", "x"]) == 2
+
+
+def test_cli_legacy_form_routes_to_verify(tmp_path, monkeypatch) -> None:
+    # `datagate <contract>` (no subcommand) must behave like `verify`.
+    output = tmp_path / "r.json"
+    called = {}
+
+    def fake_run(contract_path, *, dsn=None, **k):
+        called["contract"] = contract_path
+        return build_report(database="db", schema="public", findings=[])
+
+    monkeypatch.setattr(cli, "run", fake_run)
+    assert cli.main(["legacy.yaml", "-o", str(output)]) == 0
+    assert called["contract"] == "legacy.yaml"

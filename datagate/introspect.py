@@ -26,6 +26,8 @@ class _Cursor(Protocol):
 
     def fetchall(self) -> list[tuple[Any, ...]]: ...
 
+    def fetchone(self) -> tuple[Any, ...] | None: ...
+
     def __enter__(self) -> _Cursor: ...
 
     def __exit__(self, *exc: object) -> Any: ...
@@ -275,6 +277,13 @@ class Introspector:
             "Introspection complete: %d table(s), %d view(s)", len(tables), len(views)
         )
         return Schema(name=schema, tables=tuple(tables), views=tuple(views))
+
+    def current_database(self) -> str:
+        """Return the name of the database the connection is attached to."""
+        with self._connection.cursor() as cursor:
+            cursor.execute("-- datagate:current_database\nSELECT current_database()")
+            row = cursor.fetchone()
+        return str(row[0]) if row else ""
 
     def _fetch(self, sql: str, params: Sequence[Any]) -> list[tuple[Any, ...]]:
         with self._connection.cursor() as cursor:
