@@ -261,6 +261,12 @@ On the platform host the tool lives at
 (`pip install -e .` inside a venv) or run the Docker image; the DSN of the
 read-only role is supplied through the environment / secrets, never committed.
 
+**Automated deployment:** a merge to `main` can deploy to the server over SSH via
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) (running
+[`scripts/deploy.sh`](scripts/deploy.sh)). See
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the one-time setup — no credentials
+ever live in the repository.
+
 ## Development
 
 ```bash

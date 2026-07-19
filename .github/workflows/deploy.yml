@@ -1,0 +1,30 @@
+name: Deploy
+
+# Deploy the Data Gate to the server automatically after each merge to main.
+# Disabled until the repository variable DEPLOY_ENABLED is set to "true", so it
+# never fails before the one-time SSH setup is done (see docs/DEPLOYMENT.md).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "${{ secrets.DEPLOY_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy over SSH
+        run: |
+          ssh -i ~/.ssh/id_deploy \
+            "${{ secrets.DEPLOY_SSH_USER }}@${{ secrets.DEPLOY_SSH_HOST }}" \
+            "bash -s -- '${{ vars.DATAGATE_HOME }}'" < scripts/deploy.sh
